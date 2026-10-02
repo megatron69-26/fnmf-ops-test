@@ -10,7 +10,6 @@ EXPECTED_COMMIT="20c79b75a2b3decebbfea8d8a71e5fc00c072d9e"
 WORKSPACE_DIR="/c/Users/khoid/Projects/build-workspaces/backend-test"
 ARTIFACT_DIR="/c/Users/khoid/Projects/artifacts/backend"
 GIT_LOCAL_SRC="/c/Users/khoid/Projects/fnmf-backend-test"
-GIT_REMOTE_SRC="https://github.com/megatron69-26/fnmf-backend-test.git"
 
 mkdir -p "$WORKSPACE_DIR"
 mkdir -p "$ARTIFACT_DIR"
@@ -37,13 +36,13 @@ mask_secrets() {
 echo "[1/6] Chuẩn bị workspace độc lập ngoài repo..."
 echo "Workspace: $WORKSPACE_DIR"
 if [ ! -d "$WORKSPACE_DIR/.git" ]; then
-    echo "Khởi tạo clone từ $GIT_REMOTE_SRC (dự phòng $GIT_LOCAL_SRC)..."
-    git clone "$GIT_REMOTE_SRC" "$WORKSPACE_DIR" || git clone "$GIT_LOCAL_SRC" "$WORKSPACE_DIR"
+    echo "Khởi tạo clone từ Git repo nguồn ($GIT_LOCAL_SRC)..."
+    git clone "$GIT_LOCAL_SRC" "$WORKSPACE_DIR"
 fi
 
 cd "$WORKSPACE_DIR"
 echo "[2/6] Fetch và Checkout commit chỉ định..."
-git fetch origin || git fetch "$GIT_LOCAL_SRC" main
+git fetch "$GIT_LOCAL_SRC" main
 git checkout "$EXPECTED_COMMIT"
 
 ACTUAL_COMMIT=$(git rev-parse HEAD)
@@ -57,15 +56,14 @@ fi
 echo "XÁC NHẬN: Commit SHA hoàn toàn chính xác ($ACTUAL_COMMIT)."
 
 echo "[3/6] Thiết lập toolchain (JDK 17 Eclipse Adoptium & Maven 3.9.16)..."
-export JAVA_HOME="/c/Program Files/Eclipse Adoptium/jdk-17.0.20.8-hotspot"
-export PATH="/c/tools/apache-maven-3.9.16/bin:$JAVA_HOME/bin:$PATH"
+export JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17.0.20.8-hotspot"
+export PATH="/usr/bin:/c/tools/apache-maven-3.9.16/bin:$PATH"
 
-mvn -v | tee -a "$RAW_LOG"
+mvn.cmd -v | tee -a "$RAW_LOG"
 
-echo "[4/6] Chạy toàn bộ Unit & Integration tests (mvn clean test)..."
-mvn clean test 2>&1 | tee -a "$RAW_LOG"
+echo "[4/6] Chạy toàn bộ Unit & Integration tests (mvn.cmd clean test)..."
+mvn.cmd clean test 2>&1 | tee -a "$RAW_LOG"
 
-# Kiểm tra báo cáo Surefire
 echo "[5/6] Đối soát kết quả kiểm thử từ Surefire Reports..."
 SUREFIRE_DIR="$WORKSPACE_DIR/target/surefire-reports"
 if [ ! -d "$SUREFIRE_DIR" ]; then
@@ -77,6 +75,7 @@ TOTAL_TESTS=0
 TOTAL_FAILURES=0
 TOTAL_ERRORS=0
 TOTAL_SKIPPED=0
+SUITE_COUNT=0
 
 for report in "$SUREFIRE_DIR"/*.txt; do
     if [ -f "$report" ]; then
@@ -86,16 +85,19 @@ for report in "$SUREFIRE_DIR"/*.txt; do
             FAIL=$(echo "$SUMMARY_LINE" | sed -n 's/.*Failures: \([0-9]*\).*/\1/p')
             ERR=$(echo "$SUMMARY_LINE" | sed -n 's/.*Errors: \([0-9]*\).*/\1/p')
             SKIP=$(echo "$SUMMARY_LINE" | sed -n 's/.*Skipped: \([0-9]*\).*/\1/p')
-            TOTAL_TESTS=$((TOTAL_TESTS + RUN))
-            TOTAL_FAILURES=$((TOTAL_FAILURES + FAIL))
-            TOTAL_ERRORS=$((TOTAL_ERRORS + ERR))
-            TOTAL_SKIPPED=$((TOTAL_SKIPPED + SKIP))
+            
+            [ -n "$RUN" ] && TOTAL_TESTS=$((TOTAL_TESTS + RUN))
+            [ -n "$FAIL" ] && TOTAL_FAILURES=$((TOTAL_FAILURES + FAIL))
+            [ -n "$ERR" ] && TOTAL_ERRORS=$((TOTAL_ERRORS + ERR))
+            [ -n "$SKIP" ] && TOTAL_SKIPPED=$((TOTAL_SKIPPED + SKIP))
+            SUITE_COUNT=$((SUITE_COUNT + 1))
         fi
     fi
 done
 
 echo "=========================================================="
 echo "KẾT QUẢ KIỂM THỬ BACKEND TEST:"
+echo " - Tổng số suites: $SUITE_COUNT"
 echo " - Tổng số bài test đã chạy: $TOTAL_TESTS"
 echo " - Thất bại (Failures): $TOTAL_FAILURES"
 echo " - Lỗi (Errors): $TOTAL_ERRORS"
@@ -103,12 +105,12 @@ echo " - Bỏ qua (Skipped): $TOTAL_SKIPPED"
 echo "=========================================================="
 
 if [ "$TOTAL_TESTS" -eq 0 ] || [ "$TOTAL_FAILURES" -ne 0 ] || [ "$TOTAL_ERRORS" -ne 0 ]; then
-    echo "LỖI: Kiểm thử Backend không đạt tiêu chuẩn (Tests: $TOTAL_TESTS, Failures: $TOTAL_FAILURES, Errors: $TOTAL_ERRORS)!" >&2
+    echo "LỖI: Kiểm thử Backend không đạt tiêu chuẩn (Suites: $SUITE_COUNT, Tests: $TOTAL_TESTS, Failures: $TOTAL_FAILURES, Errors: $TOTAL_ERRORS)!" >&2
     exit 1
 fi
 
 echo "[6/6] Đóng gói JAR artifact và tính SHA-256..."
-mvn package -DskipTests 2>&1 | tee -a "$RAW_LOG"
+mvn.cmd package -DskipTests 2>&1 | tee -a "$RAW_LOG"
 
 SOURCE_JAR="$WORKSPACE_DIR/target/llm-gateway-1.1.17.jar"
 if [ ! -f "$SOURCE_JAR" ]; then
@@ -138,7 +140,7 @@ echo "==========================================================================
 echo "    KẾT QUẢ BUILD BACKEND TEST THÀNH CÔNG                                       "
 echo "================================================================================"
 echo "Commit Git      : $ACTUAL_COMMIT"
-echo "Số bài test đạt : $TOTAL_TESTS tests (0 failures, 0 errors, $TOTAL_SKIPPED skipped)"
+echo "Số bài test đạt : $TOTAL_TESTS tests / $SUITE_COUNT suites (0 failures, 0 errors, $TOTAL_SKIPPED skipped)"
 echo "Tệp Artifact    : $DEST_JAR"
 echo "Dung lượng JAR  : $JAR_SIZE bytes"
 echo "Checksum SHA256 : $JAR_SHA256"

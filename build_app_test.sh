@@ -10,7 +10,6 @@ EXPECTED_COMMIT="ebf2fdd55d3e57f3c5428585c1e23821d10a30e0"
 WORKSPACE_DIR="/c/Users/khoid/Projects/build-workspaces/app-test"
 ARTIFACT_DIR="/c/Users/khoid/Projects/artifacts/app"
 GIT_LOCAL_SRC="/c/Users/khoid/Projects/fnmf-app-test"
-GIT_REMOTE_SRC="https://github.com/megatron69-26/fnmf-app-test.git"
 
 mkdir -p "$WORKSPACE_DIR"
 mkdir -p "$ARTIFACT_DIR"
@@ -34,13 +33,13 @@ mask_secrets() {
 echo "[1/6] Chuẩn bị workspace độc lập ngoài repo..."
 echo "Workspace: $WORKSPACE_DIR"
 if [ ! -d "$WORKSPACE_DIR/.git" ]; then
-    echo "Khởi tạo clone từ $GIT_REMOTE_SRC (dự phòng $GIT_LOCAL_SRC)..."
-    git clone "$GIT_REMOTE_SRC" "$WORKSPACE_DIR" || git clone "$GIT_LOCAL_SRC" "$WORKSPACE_DIR"
+    echo "Khởi tạo clone từ Git repo nguồn ($GIT_LOCAL_SRC)..."
+    git clone "$GIT_LOCAL_SRC" "$WORKSPACE_DIR"
 fi
 
 cd "$WORKSPACE_DIR"
 echo "[2/6] Fetch và Checkout commit chỉ định..."
-git fetch origin || git fetch "$GIT_LOCAL_SRC" main
+git fetch "$GIT_LOCAL_SRC" main
 git checkout "$EXPECTED_COMMIT"
 
 ACTUAL_COMMIT=$(git rev-parse HEAD)
@@ -54,10 +53,10 @@ fi
 echo "XÁC NHẬN: Commit SHA hoàn toàn chính xác ($ACTUAL_COMMIT)."
 
 echo "[3/6] Thiết lập toolchain (JDK 17 Eclipse Adoptium & Android SDK)..."
-export JAVA_HOME="/c/Program Files/Eclipse Adoptium/jdk-17.0.20.8-hotspot"
-export ANDROID_HOME="/c/Users/khoid/AppData/Local/Android/Sdk"
-export ANDROID_SDK_ROOT="/c/Users/khoid/AppData/Local/Android/Sdk"
-export PATH="$JAVA_HOME/bin:$PATH"
+export JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17.0.20.8-hotspot"
+export ANDROID_HOME="C:/Users/khoid/AppData/Local/Android/Sdk"
+export ANDROID_SDK_ROOT="C:/Users/khoid/AppData/Local/Android/Sdk"
+export PATH="/usr/bin:$JAVA_HOME/bin:$PATH"
 
 if [ ! -f "local.properties" ]; then
     echo "Tạo local.properties trỏ đến Android SDK..."
