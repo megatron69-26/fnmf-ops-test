@@ -31,13 +31,20 @@ fi
 # 3. Query stock catalog with strict asset verification
 echo "[3/3] Kiểm tra API danh mục cổ phiếu (/api/stocks)..."
 STOCKS_JSON=$("$ADB" -s R3CM8105TPA shell "run-as com.termux /data/data/com.termux/files/usr/bin/curl -s -m 5 http://127.0.0.1:8083/api/stocks" 2>/dev/null || true)
+echo "Phản hồi danh mục: $STOCKS_JSON"
 
-if echo "$STOCKS_JSON" | grep -q 'BNBUSDT' && echo "$STOCKS_JSON" | grep -q 'DOGEUSDT'; then
-    echo "KIỂM CHỨNG ĐẠT: Danh mục chứa đủ tài sản Binance."
-else
-    echo "KIỂM CHỨNG THẤT BẠI: Danh mục trả về dữ liệu rỗng hoặc sai định dạng!" >&2
+MISSING_ASSETS=""
+for ASSET in "BNBUSDT" "SOLUSDT" "XRPUSDT" "ADAUSDT" "DOGEUSDT"; do
+    if ! echo "$STOCKS_JSON" | grep -q "\"$ASSET\""; then
+        MISSING_ASSETS="$MISSING_ASSETS $ASSET"
+    fi
+done
+
+if [ -n "$MISSING_ASSETS" ]; then
+    echo "KIỂM CHỨNG THẤT BẠI: Thiếu các mã tài sản trong danh mục:$MISSING_ASSETS" >&2
     exit 1
 fi
+echo "KIỂM CHỨNG ĐẠT: Xác nhận đầy đủ 5/5 tài sản Binance (BNBUSDT, SOLUSDT, XRPUSDT, ADAUSDT, DOGEUSDT)."
 
 echo "=========================================================="
 echo "          TẤT CẢ KIỂM TRA ĐẠT TIÊU CHUẨN (HEALTHY)        "

@@ -46,15 +46,38 @@ done
 
 if [ "$IS_UP" != "true" ]; then
     echo "LỖI: Backend không chuyển sang trạng thái UP sau $((MAX_ATTEMPTS * 2))s!" >&2
-    echo "Log lỗi 30 dòng gần nhất:" >&2
-    "$ADB" -s R3CM8105TPA shell "run-as com.termux tail -n 30 /data/data/com.termux/files/home/backend_test.log" >&2
+    echo "Trích xuất 30 dòng log lỗi gần nhất (đã áp dụng bộ lọc che thông tin nhạy cảm):" >&2
+    RAW_ERR=$("$ADB" -s R3CM8105TPA shell "run-as com.termux tail -n 30 /data/data/com.termux/files/home/backend_test.log" 2>/dev/null || true)
+    echo "$RAW_ERR" | sed -E \
+      -e 's/eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/[REDACTED_JWT_TOKEN]/g' \
+      -e 's/([aA]uthorization:[[:space:]]*Bearer[[:space:]]+)[^[:space:]]+/\1[REDACTED_TOKEN]/g' \
+      -e 's/([pP]assword[:=][[:space:]]*)[^& ,;"]+/\1[REDACTED]/g' \
+      -e 's/"password"[[:space:]]*:[[:space:]]*"[^"]+"/"password":"[REDACTED]"/g' \
+      -e 's/TEST_DATASOURCE_PASSWORD=[^& ,;]*/TEST_DATASOURCE_PASSWORD=[REDACTED]/g' \
+      -e 's/TEST_JWT_SECRET=[^& ,;]*/TEST_JWT_SECRET=[REDACTED]/g' \
+      -e 's/(jwt\.secret[[:space:]]*=[[:space:]]*)[^& ,;]+/\1[REDACTED]/g' \
+      -e 's/([aA]pi[kK]ey[:=][[:space:]]*)[^& ,;"]+/\1[REDACTED_KEY]/g' \
+      -e 's/(key=[a-zA-Z0-9_-]{8,})/key=[REDACTED_KEY]/g' >&2
     exit 1
 fi
 
-# 4. Verify API catalog
+# 4. Strictly verify API catalog contains all 5 assets
 echo "[4/4] Kiểm tra phản hồi API danh mục (/api/stocks)..."
 STOCKS_JSON=$("$ADB" -s R3CM8105TPA shell "run-as com.termux /data/data/com.termux/files/usr/bin/curl -s -m 3 http://127.0.0.1:8083/api/stocks" 2>/dev/null || true)
-echo "Catalog response: $STOCKS_JSON"
+echo "Phản hồi danh mục: $STOCKS_JSON"
+
+MISSING_ASSETS=""
+for ASSET in "BNBUSDT" "SOLUSDT" "XRPUSDT" "ADAUSDT" "DOGEUSDT"; do
+    if ! echo "$STOCKS_JSON" | grep -q "\"$ASSET\""; then
+        MISSING_ASSETS="$MISSING_ASSETS $ASSET"
+    fi
+done
+
+if [ -n "$MISSING_ASSETS" ]; then
+    echo "LỖI: API danh mục trả về thiếu các mã tài sản:$MISSING_ASSETS" >&2
+    exit 1
+fi
+echo "KIỂM CHỨNG ĐẠT: Xác nhận đầy đủ 5/5 tài sản Binance (BNBUSDT, SOLUSDT, XRPUSDT, ADAUSDT, DOGEUSDT)."
 
 echo "=========================================================="
 echo "    KHỞI ĐỘNG LẠI THÀNH CÔNG - BACKEND TRỰC TUYẾN 100%   "
