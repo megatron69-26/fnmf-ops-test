@@ -1,5 +1,6 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+
 echo "================================================================================"
 echo "    FNMF DATABASE SECURE BACKUP & VERIFIED RESTORE RECONCILIATION              "
 echo "================================================================================"
@@ -11,18 +12,27 @@ TEMP_DUMP_NAME="sec_dump_${TIMESTAMP}.tmp"
 VERIFY_DB_NAME="fnmf_test_verify_${TIMESTAMP}"
 BACKUP_DIR="/c/Users/khoid/AppData/Local/fnmf-backups"
 DEST_FILE="$BACKUP_DIR/fnmf_test_backup_${TIMESTAMP}.sql"
+VERIFICATION_PASSED="false"
 
-# Cleanup trap: Ensures transient phone files and transient DB are dropped on any exit/error
+# Cleanup trap: Runs unconditionally on script exit.
+# Drops transient DB, deletes phone dump, and quarantines backup file if verification failed.
 cleanup() {
     EXIT_CODE=$?
     echo ""
-    echo "[DỌN DẸP] Đảm bảo dọn sạch tài nguyên tạm trên Note 10+..."
+    echo "[DỌN DẸP] Đang dọn dẹp tài nguyên tạm..."
     "$ADB" -s R3CM8105TPA shell "run-as com.termux rm -f /data/data/com.termux/files/home/$TEMP_DUMP_NAME" 2>/dev/null || true
     if [ -n "$VERIFY_DB_NAME" ]; then
         "$ADB" -s R3CM8105TPA shell "run-as com.termux /data/data/com.termux/files/usr/bin/dropdb --if-exists $VERIFY_DB_NAME" 2>/dev/null || true
     fi
+
+    if [ "$VERIFICATION_PASSED" != "true" ] && [ -f "$DEST_FILE" ]; then
+        echo "CẢNH BÁO BẢO TOÀN: Xác minh phục hồi thất bại hoặc bị ngắt quãng!" >&2
+        echo "Tệp sao lưu bị loại khỏi danh sách hợp lệ: ${DEST_FILE}.FAILED_VERIFICATION" >&2
+        mv "$DEST_FILE" "${DEST_FILE}.FAILED_VERIFICATION" 2>/dev/null || true
+    fi
+
     if [ $EXIT_CODE -ne 0 ]; then
-        echo "CẢNH BÁO: Tác vụ kết thúc với mã lỗi $EXIT_CODE!" >&2
+        echo "KẾT THÚC: Tác vụ dừng với mã lỗi $EXIT_CODE!" >&2
     fi
 }
 trap cleanup EXIT
@@ -35,19 +45,23 @@ echo "[1/6] Kiểm tra kết nối Galaxy Note 10+ qua ADB..."
 }
 echo "OK: Thiết bị đã kết nối."
 
-# 2. Query original metrics from fnmf_test
-echo "[2/6] Thu thập số liệu đối soát từ database gốc (fnmf_test)..."
-ORIG_METRICS=$("$ADB" -s R3CM8105TPA shell "run-as com.termux /data/data/com.termux/files/usr/bin/psql -d fnmf_test -U fnmf_test_user -v ON_ERROR_STOP=1 -t -A -F ',' -c 'SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM wallets), (SELECT count(*) FROM flyway_schema_history), (SELECT count(*) FROM holdings), (SELECT count(*) FROM watchlists);'" 2>/dev/null || true)
+# 2. Query original metrics and content sample from fnmf_test
+echo "[2/6] Thu thập số liệu đối soát và mẫu dữ liệu từ database gốc (fnmf_test)..."
+ORIG_METRICS=$("$ADB" -s R3CM8105TPA shell "run-as com.termux /data/data/com.termux/files/usr/bin/psql -d fnmf_test -U fnmf_test_user -v ON_ERROR_STOP=1 -t -A -F ',' -c 'SELECT (SELECT count(*) FROM information_schema.tables WHERE table_schema = '\''public'\''), (SELECT count(*) FROM users), (SELECT count(*) FROM wallets), (SELECT count(*) FROM flyway_schema_history), (SELECT count(*) FROM holdings), (SELECT count(*) FROM watchlists);'")
 
-if [ -z "$ORIG_METRICS" ]; then
-    echo "LỖI: Không thể truy vấn số liệu từ database gốc fnmf_test!" >&2
+# Validate exact format: 6 comma-separated integers
+METRICS_REGEX='^[0-9]+,[0-9]+,[0-9]+,[0-9]+,[0-9]+,[0-9]+$'
+if [[ ! "$ORIG_METRICS" =~ $METRICS_REGEX ]]; then
+    echo "LỖI: Phản hồi số liệu DB gốc không đúng định dạng (Nhận được: '$ORIG_METRICS')!" >&2
     exit 1
 fi
-echo "Số liệu DB gốc (users,wallets,flyway,holdings,watchlists): $ORIG_METRICS"
-IFS=',' read -r ORIG_USERS ORIG_WALLETS ORIG_FLYWAY ORIG_HOLDINGS ORIG_WATCHLISTS <<< "$ORIG_METRICS"
+echo "Số liệu DB gốc (tables,users,wallets,flyway,holdings,watchlists): $ORIG_METRICS"
 
-# 3. Prepare directory and generate dump in Termux private app sandbox
-echo "[3/6] Xuất bản dump an toàn trong sandbox riêng Termux (không ghi vào /sdcard/)..."
+ORIG_SAMPLES=$("$ADB" -s R3CM8105TPA shell "run-as com.termux /data/data/com.termux/files/usr/bin/psql -d fnmf_test -U fnmf_test_user -v ON_ERROR_STOP=1 -t -A -F '|' -c 'SELECT (SELECT id || '\'':'\'' || lower(email) FROM users ORDER BY id LIMIT 1), (SELECT id || '\'':'\'' || balance_usd FROM wallets ORDER BY id LIMIT 1), (SELECT version || '\'':'\'' || script FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1);'")
+echo "Mẫu dữ liệu DB gốc (user_sample | wallet_sample | flyway_sample): $ORIG_SAMPLES"
+
+# 3. Export dump into Termux private app sandbox (never /sdcard/)
+echo "[3/6] Xuất bản dump trong sandbox riêng Termux (không chạm /sdcard/)..."
 mkdir -p "$BACKUP_DIR"
 "$ADB" -s R3CM8105TPA shell "run-as com.termux /data/data/com.termux/files/usr/bin/pg_dump -U fnmf_test_user -d fnmf_test -F p -f /data/data/com.termux/files/home/$TEMP_DUMP_NAME"
 
@@ -58,45 +72,58 @@ echo "[4/6] Truyền luồng dữ liệu bảo mật trực tiếp về laptop q
 
 FILE_SIZE=$(stat -c%s "$DEST_FILE" 2>/dev/null || wc -c < "$DEST_FILE")
 if [ "$FILE_SIZE" -lt 5000 ]; then
-    echo "LỖI: Bản dump quá nhỏ ($FILE_SIZE bytes), có thể đã xảy ra sự cố truyền dữ liệu!" >&2
+    echo "LỖI: Bản dump quá nhỏ ($FILE_SIZE bytes), nghi ngờ dữ liệu hỏng!" >&2
     exit 1
 fi
 SHA256_HASH=$(sha256sum "$DEST_FILE" | cut -d' ' -f1)
 
 echo "================================================================================"
-echo "THÔNG TIN BẢN SAO LƯU CHÍNH THỨC TRÊN LAPTOP:"
+echo "BẢN SAO LƯU TẠM THỜI ĐÃ TẢI VỀ (CHỜ KIỂM CHỨNG PHỤC HỒI):"
 echo "Đường dẫn: $DEST_FILE"
 echo "Kích thước: $FILE_SIZE bytes"
 echo "Mã băm SHA-256: $SHA256_HASH"
 echo "================================================================================"
 
 # 5. Restore into transient DB with strict ON_ERROR_STOP=1
-echo "[5/6] Khởi tạo DB tạm và phục hồi bản dump với cờ ON_ERROR_STOP=1..."
+echo "[5/6] Khởi tạo DB tạm ($VERIFY_DB_NAME) và nạp dữ liệu với ON_ERROR_STOP=1..."
 "$ADB" -s R3CM8105TPA shell "run-as com.termux /data/data/com.termux/files/usr/bin/createdb -O fnmf_test_user $VERIFY_DB_NAME"
 
-# Pipe backup into verification DB with ON_ERROR_STOP=1
+# Pipe dump file from laptop to phone psql
 cat "$DEST_FILE" | "$ADB" -s R3CM8105TPA shell "run-as com.termux /data/data/com.termux/files/usr/bin/psql -v ON_ERROR_STOP=1 -d $VERIFY_DB_NAME -U fnmf_test_user -q"
 
-# 6. Programmatically reconcile counts between original and restored DB
-echo "[6/6] Đối soát tự động số lượng bản ghi giữa DB gốc và DB phục hồi..."
-REST_METRICS=$("$ADB" -s R3CM8105TPA shell "run-as com.termux /data/data/com.termux/files/usr/bin/psql -d $VERIFY_DB_NAME -U fnmf_test_user -v ON_ERROR_STOP=1 -t -A -F ',' -c 'SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM wallets), (SELECT count(*) FROM flyway_schema_history), (SELECT count(*) FROM holdings), (SELECT count(*) FROM watchlists);'" 2>/dev/null || true)
+# 6. Programmatically reconcile metrics and content samples between original and restored DB
+echo "[6/6] Đối soát tự động số lượng và nội dung mẫu giữa DB gốc và DB phục hồi..."
+REST_METRICS=$("$ADB" -s R3CM8105TPA shell "run-as com.termux /data/data/com.termux/files/usr/bin/psql -d $VERIFY_DB_NAME -U fnmf_test_user -v ON_ERROR_STOP=1 -t -A -F ',' -c 'SELECT (SELECT count(*) FROM information_schema.tables WHERE table_schema = '\''public'\''), (SELECT count(*) FROM users), (SELECT count(*) FROM wallets), (SELECT count(*) FROM flyway_schema_history), (SELECT count(*) FROM holdings), (SELECT count(*) FROM watchlists);'")
 
+if [[ ! "$REST_METRICS" =~ $METRICS_REGEX ]]; then
+    echo "LỖI: Phản hồi số liệu DB phục hồi không đúng định dạng (Nhận được: '$REST_METRICS')!" >&2
+    exit 1
+fi
 echo "Số liệu DB phục hồi: $REST_METRICS"
-IFS=',' read -r REST_USERS REST_WALLETS REST_FLYWAY REST_HOLDINGS REST_WATCHLISTS <<< "$REST_METRICS"
 
-MISMATCH=""
-[ "$ORIG_USERS" -ne "$REST_USERS" ] && MISMATCH="$MISMATCH users(gốc=$ORIG_USERS,phụchồi=$REST_USERS)"
-[ "$ORIG_WALLETS" -ne "$REST_WALLETS" ] && MISMATCH="$MISMATCH wallets(gốc=$ORIG_WALLETS,phụchồi=$REST_WALLETS)"
-[ "$ORIG_FLYWAY" -ne "$REST_FLYWAY" ] && MISMATCH="$MISMATCH flyway(gốc=$ORIG_FLYWAY,phụchồi=$REST_FLYWAY)"
-[ "$ORIG_HOLDINGS" -ne "$REST_HOLDINGS" ] && MISMATCH="$MISMATCH holdings(gốc=$ORIG_HOLDINGS,phụchồi=$REST_HOLDINGS)"
-[ "$ORIG_WATCHLISTS" -ne "$REST_WATCHLISTS" ] && MISMATCH="$MISMATCH watchlists(gốc=$ORIG_WATCHLISTS,phụchồi=$REST_WATCHLISTS)"
+REST_SAMPLES=$("$ADB" -s R3CM8105TPA shell "run-as com.termux /data/data/com.termux/files/usr/bin/psql -d $VERIFY_DB_NAME -U fnmf_test_user -v ON_ERROR_STOP=1 -t -A -F '|' -c 'SELECT (SELECT id || '\'':'\'' || lower(email) FROM users ORDER BY id LIMIT 1), (SELECT id || '\'':'\'' || balance_usd FROM wallets ORDER BY id LIMIT 1), (SELECT version || '\'':'\'' || script FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1);'")
+echo "Mẫu dữ liệu DB phục hồi: $REST_SAMPLES"
 
-if [ -n "$MISMATCH" ]; then
-    echo "LỖI ĐỐI SOÁT PHỤC HỒI: Dữ liệu phục hồi không khớp hoàn toàn với DB gốc:$MISMATCH" >&2
+# Strict comparisons
+if [ "$ORIG_METRICS" != "$REST_METRICS" ]; then
+    echo "LỖI ĐỐI SOÁT: Số liệu bảng và hàng không khớp! (Gốc: $ORIG_METRICS, Phục hồi: $REST_METRICS)" >&2
     exit 1
 fi
 
-echo "ĐỐI SOÁT THÀNH CÔNG: Mọi bảng cốt lõi (users, wallets, holdings, watchlists, flyway migrations) đều khớp 100%!"
+if [ "$ORIG_SAMPLES" != "$REST_SAMPLES" ]; then
+    echo "LỖI ĐỐI SOÁT: Mẫu dữ liệu nội dung không khớp! (Gốc: $ORIG_SAMPLES, Phục hồi: $REST_SAMPLES)" >&2
+    exit 1
+fi
+
+# Mark verification as passed!
+VERIFICATION_PASSED="true"
+
 echo "================================================================================"
-echo "          XÁC MINH PHỤC HỒI TOÀN VẸN (RECOVERY FULLY RECONCILED)                "
+echo "KẾT QUẢ: KIỂM TRA PHỤC HỒI CƠ BẢN ĐẠT TIÊU CHUẨN."
+echo "Phạm vi kiểm tra đã chứng minh:"
+echo " - Cấu trúc bảng schema public ($ORIG_METRICS)."
+echo " - Số lượng bản ghi các bảng cốt lõi (users, wallets, holdings, watchlists, flyway)."
+echo " - Tính toàn vẹn nội dung mẫu (tài khoản user, số dư ví, script Flyway mới nhất)."
+echo "Bản sao lưu chính thức được công nhận hợp lệ tại:"
+echo " -> $DEST_FILE ($FILE_SIZE bytes, SHA256: $SHA256_HASH)"
 echo "================================================================================"
