@@ -1,0 +1,150 @@
+#!/bin/bash
+set -euo pipefail
+
+echo "================================================================================"
+echo "    FNMF ANDROID APP TEST BUILD & TEST PIPELINE (GIT-BASED AUTOMATION)          "
+echo "================================================================================"
+echo "Thời gian bắt đầu: $(date)"
+
+EXPECTED_COMMIT="ebf2fdd55d3e57f3c5428585c1e23821d10a30e0"
+WORKSPACE_DIR="/c/Users/khoid/Projects/build-workspaces/app-test"
+ARTIFACT_DIR="/c/Users/khoid/Projects/artifacts/app"
+GIT_LOCAL_SRC="/c/Users/khoid/Projects/fnmf-app-test"
+GIT_REMOTE_SRC="https://github.com/megatron69-26/fnmf-app-test.git"
+
+mkdir -p "$WORKSPACE_DIR"
+mkdir -p "$ARTIFACT_DIR"
+
+RAW_LOG="${ARTIFACT_DIR}/build_app_raw.log"
+MASKED_LOG="${ARTIFACT_DIR}/build_app_masked.log"
+rm -f "$RAW_LOG" "$MASKED_LOG"
+
+mask_secrets() {
+    sed -E \
+      -e 's/eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/[REDACTED_JWT_TOKEN]/g' \
+      -e 's/([aA]uthorization:[[:space:]]*Bearer[[:space:]]+)[^[:space:]]+/\1[REDACTED_TOKEN]/g' \
+      -e 's/([pP]assword[:=][[:space:]]*)[^& ,;"]+/\1[REDACTED]/g' \
+      -e 's/"password"[[:space:]]*:[[:space:]]*"[^"]+"/"password":"[REDACTED]"/g' \
+      -e 's/RELEASE_STORE_PASSWORD=[^& ,;]*/RELEASE_STORE_PASSWORD=[REDACTED]/g' \
+      -e 's/RELEASE_KEY_PASSWORD=[^& ,;]*/RELEASE_KEY_PASSWORD=[REDACTED]/g' \
+      -e 's/([aA]pi[kK]ey[:=][[:space:]]*)[^& ,;"]+/\1[REDACTED_KEY]/g' \
+      -e 's/(key=[a-zA-Z0-9_-]{8,})/key=[REDACTED_KEY]/g'
+}
+
+echo "[1/6] Chuẩn bị workspace độc lập ngoài repo..."
+echo "Workspace: $WORKSPACE_DIR"
+if [ ! -d "$WORKSPACE_DIR/.git" ]; then
+    echo "Khởi tạo clone từ $GIT_REMOTE_SRC (dự phòng $GIT_LOCAL_SRC)..."
+    git clone "$GIT_REMOTE_SRC" "$WORKSPACE_DIR" || git clone "$GIT_LOCAL_SRC" "$WORKSPACE_DIR"
+fi
+
+cd "$WORKSPACE_DIR"
+echo "[2/6] Fetch và Checkout commit chỉ định..."
+git fetch origin || git fetch "$GIT_LOCAL_SRC" main
+git checkout "$EXPECTED_COMMIT"
+
+ACTUAL_COMMIT=$(git rev-parse HEAD)
+echo "Commit thực tế: $ACTUAL_COMMIT"
+echo "Commit kỳ vọng: $EXPECTED_COMMIT"
+
+if [ "$ACTUAL_COMMIT" != "$EXPECTED_COMMIT" ]; then
+    echo "LỖI: Commit SHA không khớp! Dừng quy trình ngay lập tức." >&2
+    exit 1
+fi
+echo "XÁC NHẬN: Commit SHA hoàn toàn chính xác ($ACTUAL_COMMIT)."
+
+echo "[3/6] Thiết lập toolchain (JDK 17 Eclipse Adoptium & Android SDK)..."
+export JAVA_HOME="/c/Program Files/Eclipse Adoptium/jdk-17.0.20.8-hotspot"
+export ANDROID_HOME="/c/Users/khoid/AppData/Local/Android/Sdk"
+export ANDROID_SDK_ROOT="/c/Users/khoid/AppData/Local/Android/Sdk"
+export PATH="$JAVA_HOME/bin:$PATH"
+
+if [ ! -f "local.properties" ]; then
+    echo "Tạo local.properties trỏ đến Android SDK..."
+    echo 'sdk.dir=C\:\\Users\\khoid\\AppData\\Local\\Android\\Sdk' > local.properties
+fi
+
+chmod +x gradlew
+
+echo "[4/6] Chạy toàn bộ Unit tests (./gradlew testDebugUnitTest)..."
+./gradlew --no-daemon testDebugUnitTest 2>&1 | tee -a "$RAW_LOG"
+
+echo "[5/6] Đối soát kết quả kiểm thử từ JUnit XML Reports..."
+TEST_RESULTS_DIR="$WORKSPACE_DIR/app/build/test-results/testDebugUnitTest"
+if [ ! -d "$TEST_RESULTS_DIR" ]; then
+    echo "LỖI: Không tìm thấy thư mục test-results!" >&2
+    exit 1
+fi
+
+TOTAL_TESTS=0
+TOTAL_FAILURES=0
+TOTAL_ERRORS=0
+TOTAL_SKIPPED=0
+SUITE_COUNT=0
+
+for xml in "$TEST_RESULTS_DIR"/TEST-*.xml; do
+    if [ -f "$xml" ]; then
+        SUITE_COUNT=$((SUITE_COUNT + 1))
+        RUN=$(sed -n 's/.*tests="\([0-9]*\)".*/\1/p' "$xml" | head -n 1)
+        FAIL=$(sed -n 's/.*failures="\([0-9]*\)".*/\1/p' "$xml" | head -n 1)
+        ERR=$(sed -n 's/.*errors="\([0-9]*\)".*/\1/p' "$xml" | head -n 1)
+        SKIP=$(sed -n 's/.*skipped="\([0-9]*\)".*/\1/p' "$xml" | head -n 1)
+        
+        [ -n "$RUN" ] && TOTAL_TESTS=$((TOTAL_TESTS + RUN))
+        [ -n "$FAIL" ] && TOTAL_FAILURES=$((TOTAL_FAILURES + FAIL))
+        [ -n "$ERR" ] && TOTAL_ERRORS=$((TOTAL_ERRORS + ERR))
+        [ -n "$SKIP" ] && TOTAL_SKIPPED=$((TOTAL_SKIPPED + SKIP))
+    fi
+done
+
+echo "=========================================================="
+echo "KẾT QUẢ KIỂM THỬ ANDROID APP TEST:"
+echo " - Tổng số suites: $SUITE_COUNT"
+echo " - Tổng số bài test đã chạy: $TOTAL_TESTS"
+echo " - Thất bại (Failures): $TOTAL_FAILURES"
+echo " - Lỗi (Errors): $TOTAL_ERRORS"
+echo " - Bỏ qua (Skipped): $TOTAL_SKIPPED"
+echo "=========================================================="
+
+if [ "$TOTAL_TESTS" -eq 0 ] || [ "$TOTAL_FAILURES" -ne 0 ] || [ "$TOTAL_ERRORS" -ne 0 ]; then
+    echo "LỖI: Kiểm thử Android App không đạt tiêu chuẩn (Suites: $SUITE_COUNT, Tests: $TOTAL_TESTS, Failures: $TOTAL_FAILURES, Errors: $TOTAL_ERRORS)!" >&2
+    exit 1
+fi
+
+echo "[6/6] Build APK (assembleDebug) và tính SHA-256..."
+./gradlew --no-daemon assembleDebug 2>&1 | tee -a "$RAW_LOG"
+
+SOURCE_APK="$WORKSPACE_DIR/app/build/outputs/apk/debug/app-debug.apk"
+if [ ! -f "$SOURCE_APK" ]; then
+    echo "LỖI: Tệp APK đầu ra không tồn tại tại $SOURCE_APK!" >&2
+    exit 1
+fi
+
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+TARGET_APK_NAME="fnmf-app-debug-ebf2fdd_${TIMESTAMP}.apk"
+DEST_APK="$ARTIFACT_DIR/$TARGET_APK_NAME"
+LATEST_LINK="$ARTIFACT_DIR/fnmf-app-debug-latest.apk"
+
+cp "$SOURCE_APK" "$DEST_APK"
+cp "$SOURCE_APK" "$LATEST_LINK"
+
+APK_SHA256=$(sha256sum "$DEST_APK" | cut -d' ' -f1)
+echo "$APK_SHA256 *$TARGET_APK_NAME" > "${DEST_APK}.sha256"
+echo "$APK_SHA256 *fnmf-app-debug-latest.apk" > "${LATEST_LINK}.sha256"
+
+APK_SIZE=$(wc -c < "$DEST_APK")
+
+echo "Mã hóa và lưu trữ log đã che thông tin nhạy cảm..."
+mask_secrets < "$RAW_LOG" > "$MASKED_LOG"
+rm -f "$RAW_LOG"
+
+echo "================================================================================"
+echo "    KẾT QUẢ BUILD ANDROID APP TEST THÀNH CÔNG                                   "
+echo "================================================================================"
+echo "Commit Git      : $ACTUAL_COMMIT"
+echo "Số bài test đạt : $TOTAL_TESTS tests / $SUITE_COUNT suites (0 failures, 0 errors, $TOTAL_SKIPPED skipped)"
+echo "Tệp Artifact    : $DEST_APK"
+echo "Dung lượng APK  : $APK_SIZE bytes"
+echo "Checksum SHA256 : $APK_SHA256"
+echo "Tệp Log đã che  : $MASKED_LOG"
+echo "================================================================================"
