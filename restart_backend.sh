@@ -29,9 +29,9 @@ echo "$START_OUT"
 NEW_PID=$("$ADB" -s R3CM8105TPA shell "run-as com.termux cat /data/data/com.termux/files/home/backend.pid 2>/dev/null" || true)
 echo "PID tiến trình mới khởi động: '$NEW_PID'"
 
-# 3. Poll Actuator health endpoint until UP (up to 45s)
+# 3. Poll Actuator health endpoint until UP (up to 90s)
 echo "[3/4] Chờ ứng dụng Spring Boot hoàn tất khởi động và Flyway validation..."
-MAX_ATTEMPTS=25
+MAX_ATTEMPTS=45
 ATTEMPT=1
 IS_UP=false
 
