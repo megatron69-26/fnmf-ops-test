@@ -87,7 +87,16 @@ if [ "$SIMULATE_MODE" = "true" ]; then
     }
     
     get_db_version() {
-        echo "${SIM_DB_VERSION:-10}"
+        if [ "${SIM_DB_FAIL:-false}" = "true" ]; then
+            echo "LỖI GIẢ LẬP: Kết nối CSDL hoặc đọc bảng Flyway thất bại!" >&2
+            return 1
+        fi
+        local v="${SIM_DB_VERSION:-}"
+        if [ -z "$v" ]; then
+            echo "LỖI GIẢ LẬP: Biến SIM_DB_VERSION không được thiết lập!" >&2
+            return 1
+        fi
+        echo "$v"
     }
     
     remote_file_exists() {
@@ -101,6 +110,19 @@ if [ "$SIMULATE_MODE" = "true" ]; then
             wc -c < "$path" | tr -d ' '
         else
             echo "0"
+        fi
+    }
+
+    remote_sha256() {
+        local path="$1"
+        if [ "${SIM_STAGING_CORRUPT:-false}" = "true" ] && [[ "$path" == *"$STAGING_JAR"* ]]; then
+            echo "bad_corrupted_device_checksum_hash_val"
+            return 0
+        fi
+        if [ -f "$path" ]; then
+            sha256sum "$path" | awk '{print $1}' | tr -d '\r\n '
+        else
+            echo ""
         fi
     }
     
@@ -118,7 +140,8 @@ if [ "$SIMULATE_MODE" = "true" ]; then
         local src="$1"
         local dst="$2"
         if [ "${SIM_MOVE_FAIL:-false}" = "true" ]; then
-            echo "LỖI GIẢ LẬP: Di chuyển tệp thất bại!" >&2
+            echo "LỖI GIẢ LẬP: Di chuyển tệp thất bại (hoán đổi bị lỗi)!" >&2
+            rm -f "$dst"
             return 1
         fi
         mv -f "$src" "$dst"
@@ -175,8 +198,18 @@ else
     
     get_db_version() {
         local raw
-        raw=$("$ADB" -s "$DEVICE_ID" shell "run-as com.termux /data/data/com.termux/files/usr/bin/psql -d fnmf_test -U fnmf_test_user -v ON_ERROR_STOP=1 -t -A -c 'SELECT max(version) FROM flyway_schema_history WHERE success = true;'" 2>/dev/null || echo "0")
-        echo "$raw" | tr -d '\r\n '
+        if ! raw=$("$ADB" -s "$DEVICE_ID" shell "run-as com.termux /data/data/com.termux/files/usr/bin/psql -d fnmf_test -U fnmf_test_user -v ON_ERROR_STOP=1 -t -A -c 'SELECT coalesce(max(version), '\''0'\'') FROM flyway_schema_history WHERE success = true;'" 2>/dev/null); then
+            echo "LỖI KẾT NỐI CSDL: Lệnh psql kiểm tra Flyway thất bại!" >&2
+            return 1
+        fi
+        raw=$(echo "$raw" | tr -d '\r\n ')
+        local num
+        num=$(echo "$raw" | sed -e 's/^V//' | tr -dc '0-9')
+        if [ -z "$num" ]; then
+            echo "LỖI DỮ LIỆU: Phản hồi phiên bản Flyway không hợp lệ ('$raw')!" >&2
+            return 1
+        fi
+        echo "$num"
     }
     
     remote_file_exists() {
@@ -189,6 +222,13 @@ else
         local sz
         sz=$("$ADB" -s "$DEVICE_ID" shell "run-as com.termux wc -c < '$path' 2>/dev/null" | tr -d '\r\n ')
         echo "${sz:-0}"
+    }
+
+    remote_sha256() {
+        local path="$1"
+        local sum
+        sum=$("$ADB" -s "$DEVICE_ID" shell "run-as com.termux sha256sum '$path' 2>/dev/null" | awk '{print $1}' | tr -d '\r\n ')
+        echo "$sum"
     }
     
     remote_copy() {
@@ -396,9 +436,17 @@ fi
 # CHẶNG 3: MIGRATION SAFETY CHECK (ĐỐI SOÁT FLYWAY & CHẶN PHÁ HỦY)
 # ==============================================================================
 echo "[3/7] Kiểm tra lịch sử migration Flyway và đối soát SQL trong JAR..."
-CURRENT_MIGRATION=$(get_db_version)
+if ! CURRENT_MIGRATION=$(get_db_version); then
+    echo "LỖI AN TOÀN (FAIL-CLOSED): Không thể đọc phiên bản Flyway từ CSDL!" >&2
+    echo "Dừng quy trình ngay lập tức để bảo vệ an toàn CSDL." >&2
+    exit 1
+fi
+
 CURRENT_MIGRATION=$(echo "$CURRENT_MIGRATION" | sed -e 's/^V//' | tr -dc '0-9')
-CURRENT_MIGRATION="${CURRENT_MIGRATION:-0}"
+if [ -z "$CURRENT_MIGRATION" ]; then
+    echo "LỖI AN TOÀN (FAIL-CLOSED): Phiên bản Flyway sau chuẩn hóa rỗng! Hủy bỏ triển khai." >&2
+    exit 1
+fi
 echo "Phiên bản Flyway hiện tại trên CSDL: V$CURRENT_MIGRATION"
 
 if ! check_migration_safety "$TARGET_JAR" "$CURRENT_MIGRATION"; then
@@ -454,19 +502,40 @@ if [ "$STAGING_SIZE" -ne "$TARGET_SIZE" ] || [ "$STAGING_SIZE" -le 0 ]; then
     echo "LỖI: Kích thước tệp staging ($STAGING_SIZE bytes) không khớp tệp nguồn ($TARGET_SIZE bytes)!" >&2
     exit 1
 fi
-echo "OK: Đã xác thực tệp staging toàn vẹn ($STAGING_JAR, $STAGING_SIZE bytes)."
+echo "OK: Đã xác thực kích thước tệp staging ($STAGING_SIZE bytes)."
+
+echo "Đối soát checksum SHA-256 của tệp staging trên thiết bị..."
+STAGING_SHA=$(remote_sha256 "$STAGING_JAR")
+if [ -z "$STAGING_SHA" ] || [ "$STAGING_SHA" != "$ACTUAL_SHA" ]; then
+    echo "LỖI TOÀN VẸN: Checksum SHA-256 tệp staging trên thiết bị không khớp Artifact!" >&2
+    echo "  Kỳ vọng (Artifact): $ACTUAL_SHA" >&2
+    echo "  Thực tế (Thiết bị): $STAGING_SHA" >&2
+    echo "Phát hiện tệp truyền tải bị lỗi hoặc không toàn vẹn. Hủy bỏ trước khi tráo JAR!" >&2
+    exit 1
+fi
+echo "OK: Checksum SHA-256 trên thiết bị khớp tuyệt đối ($STAGING_SHA)."
 
 # ==============================================================================
 # CHẶNG 6: ATOMIC SWAP & RESTART (HOÁN ĐỔI JAR & KHỞI ĐỘNG DỊCH VỤ)
 # ==============================================================================
 echo "[6/7] Thay thế tệp JAR (Atomic Swap) và khởi động lại dịch vụ..."
+
+# ĐÁNH DẤU HỆ THỐNG BẮT ĐẦU BIẾN ĐỔI (MUTATED=true)
+# Mọi lỗi phát sinh từ thời điểm này (kể cả lỗi trong chính lệnh swap) đều kích hoạt rollback!
+MUTATED="true"
+
 if ! remote_move "$STAGING_JAR" "$PHONE_JAR"; then
-    echo "LỖI: Hoán đổi tệp staging sang tệp chính thất bại!" >&2
+    echo "LỖI: Lệnh hoán đổi tệp staging sang tệp chính thất bại hoặc bị ngắt! Kích hoạt Rollback khẩn cấp..." >&2
+    perform_rollback
     exit 1
 fi
 
-# ĐÁNH DẤU HỆ THỐNG ĐÃ BIẾN ĐỔI (MUTATED=true)
-MUTATED="true"
+if ! remote_file_exists "$PHONE_JAR"; then
+    echo "LỖI NGHIÊM TRỌNG: Tệp JAR chính ($PHONE_JAR) không tồn tại sau lệnh hoán đổi!" >&2
+    perform_rollback
+    exit 1
+fi
+
 echo "XÁC NHẬN: Tệp JAR trên thiết bị đã được thay thế bằng phiên bản mới."
 
 echo "Tiến hành khởi động lại tiến trình backend..."
