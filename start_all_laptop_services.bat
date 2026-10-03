@@ -14,6 +14,8 @@ if %errorlevel% neq 0 (
     echo           Vui long cam cap USB va mo khoa man hinh Note 10+.
 ) else (
     echo [OK] Galaxy Note 10+ da ket noi qua ADB.
+    echo [OK] Thiet lap adb forward tcp:8083 tcp:8083 de ket noi backend loopback tren Note 10+...
+    adb.exe forward tcp:8083 tcp:8083
 )
 
 echo [2/4] Khoi chay Semaphore CI/CD (Port 3000)...

@@ -121,6 +121,19 @@ fi
 # Mark verification as passed!
 VERIFICATION_PASSED="true"
 
+# Write verified manifest companion file
+cat <<EOF > "${DEST_FILE}.verified.json"
+{
+  "verified": true,
+  "backup_file": "$(basename "$DEST_FILE")",
+  "timestamp": "$TIMESTAMP",
+  "size_bytes": $FILE_SIZE,
+  "sha256": "$SHA256_HASH",
+  "reconciled_metrics": "$ORIG_METRICS",
+  "verified_at": "$(date -Iseconds)"
+}
+EOF
+
 echo "================================================================================"
 echo "KẾT QUẢ: KIỂM TRA PHỤC HỒI CƠ BẢN ĐẠT TIÊU CHUẨN."
 echo "Phạm vi kiểm tra đã chứng minh:"
