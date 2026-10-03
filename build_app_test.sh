@@ -9,6 +9,7 @@ echo "Thời gian bắt đầu: $(date)"
 EXPECTED_COMMIT="ebf2fdd55d3e57f3c5428585c1e23821d10a30e0"
 WORKSPACE_DIR="/c/Users/khoid/Projects/build-workspaces/app-test"
 ARTIFACT_DIR="/c/Users/khoid/Projects/artifacts/app"
+GIT_REMOTE_SRC="https://github.com/megatron69-26/fnmf-app-test.git"
 GIT_LOCAL_SRC="/c/Users/khoid/Projects/fnmf-app-test"
 
 mkdir -p "$WORKSPACE_DIR"
@@ -30,16 +31,31 @@ mask_secrets() {
       -e 's/(key=[a-zA-Z0-9_-]{8,})/key=[REDACTED_KEY]/g'
 }
 
+# Trap đảm bảo mọi trường hợp thoát (kể cả lỗi) đều mã hóa log thô và xóa file gốc
+cleanup_logs() {
+    if [ -f "$RAW_LOG" ]; then
+        echo "DỌN DẸP LOG: Tự động lọc bí mật và xóa tệp log thô (bảo vệ ngay cả khi build lỗi)..."
+        mask_secrets < "$RAW_LOG" > "$MASKED_LOG" 2>/dev/null || true
+        rm -f "$RAW_LOG"
+    fi
+}
+trap cleanup_logs EXIT
+
 echo "[1/6] Chuẩn bị workspace độc lập ngoài repo..."
 echo "Workspace: $WORKSPACE_DIR"
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=""
+
 if [ ! -d "$WORKSPACE_DIR/.git" ]; then
-    echo "Khởi tạo clone từ Git repo nguồn ($GIT_LOCAL_SRC)..."
-    git clone "$GIT_LOCAL_SRC" "$WORKSPACE_DIR"
+    echo "Khởi tạo clone trực tiếp từ GitHub Remote ($GIT_REMOTE_SRC)..."
+    git clone "$GIT_REMOTE_SRC" "$WORKSPACE_DIR" || git clone "$GIT_LOCAL_SRC" "$WORKSPACE_DIR"
 fi
 
 cd "$WORKSPACE_DIR"
-echo "[2/6] Fetch và Checkout commit chỉ định..."
-git fetch "$GIT_LOCAL_SRC" main
+git remote set-url origin "$GIT_REMOTE_SRC" 2>/dev/null || true
+
+echo "[2/6] Kéo bản mới trực tiếp từ GitHub Remote (git fetch origin main)..."
+git fetch origin main
 git checkout "$EXPECTED_COMMIT"
 
 ACTUAL_COMMIT=$(git rev-parse HEAD)
@@ -136,13 +152,10 @@ echo "$APK_SHA256 *fnmf-app-debug-latest.apk" > "${LATEST_LINK}.sha256"
 
 APK_SIZE=$(wc -c < "$DEST_APK")
 
-echo "Mã hóa và lưu trữ log đã che thông tin nhạy cảm..."
-mask_secrets < "$RAW_LOG" > "$MASKED_LOG"
-rm -f "$RAW_LOG"
-
 echo "================================================================================"
 echo "    KẾT QUẢ BUILD ANDROID APP TEST THÀNH CÔNG                                   "
 echo "================================================================================"
+echo "Nguồn Git Remote: $GIT_REMOTE_SRC"
 echo "Commit Git      : $ACTUAL_COMMIT"
 echo "Số bài test đạt : $TOTAL_TESTS tests / $SUITE_COUNT suites (0 failures, 0 errors, $TOTAL_SKIPPED skipped)"
 echo "Tệp Artifact    : $DEST_APK"

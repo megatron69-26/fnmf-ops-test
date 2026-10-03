@@ -2,13 +2,14 @@
 set -euo pipefail
 
 echo "================================================================================"
-echo "    FNMF BACKEND TEST BUILD & TEST PIPELINE (GIT-BASED AUTOMATION)              "
+echo "    FNMF BACKEND TEST BUILD & TEST PIPELINE (GIT ORIGIN AUTOMATION)             "
 echo "================================================================================"
 echo "Thời gian bắt đầu: $(date)"
 
 EXPECTED_COMMIT="20c79b75a2b3decebbfea8d8a71e5fc00c072d9e"
 WORKSPACE_DIR="/c/Users/khoid/Projects/build-workspaces/backend-test"
 ARTIFACT_DIR="/c/Users/khoid/Projects/artifacts/backend"
+GIT_REMOTE_SRC="https://github.com/megatron69-26/fnmf-backend-test.git"
 GIT_LOCAL_SRC="/c/Users/khoid/Projects/fnmf-backend-test"
 
 mkdir -p "$WORKSPACE_DIR"
@@ -33,16 +34,31 @@ mask_secrets() {
       -e 's/(vnpay\.hash-secret=[^& ,;]*)/vnpay.hash-secret=[REDACTED]/g'
 }
 
+# Trap đảm bảo mọi trường hợp thoát (kể cả lỗi) đều mã hóa log thô và xóa file gốc
+cleanup_logs() {
+    if [ -f "$RAW_LOG" ]; then
+        echo "DỌN DẸP LOG: Tự động lọc bí mật và xóa tệp log thô (bảo vệ ngay cả khi build lỗi)..."
+        mask_secrets < "$RAW_LOG" > "$MASKED_LOG" 2>/dev/null || true
+        rm -f "$RAW_LOG"
+    fi
+}
+trap cleanup_logs EXIT
+
 echo "[1/6] Chuẩn bị workspace độc lập ngoài repo..."
 echo "Workspace: $WORKSPACE_DIR"
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=""
+
 if [ ! -d "$WORKSPACE_DIR/.git" ]; then
-    echo "Khởi tạo clone từ Git repo nguồn ($GIT_LOCAL_SRC)..."
-    git clone "$GIT_LOCAL_SRC" "$WORKSPACE_DIR"
+    echo "Khởi tạo clone trực tiếp từ GitHub Remote ($GIT_REMOTE_SRC)..."
+    git clone "$GIT_REMOTE_SRC" "$WORKSPACE_DIR" || git clone "$GIT_LOCAL_SRC" "$WORKSPACE_DIR"
 fi
 
 cd "$WORKSPACE_DIR"
-echo "[2/6] Fetch và Checkout commit chỉ định..."
-git fetch "$GIT_LOCAL_SRC" main
+git remote set-url origin "$GIT_REMOTE_SRC" 2>/dev/null || true
+
+echo "[2/6] Kéo bản mới trực tiếp từ GitHub Remote (git fetch origin main)..."
+git fetch origin main
 git checkout "$EXPECTED_COMMIT"
 
 ACTUAL_COMMIT=$(git rev-parse HEAD)
@@ -53,7 +69,7 @@ if [ "$ACTUAL_COMMIT" != "$EXPECTED_COMMIT" ]; then
     echo "LỖI: Commit SHA không khớp! Dừng quy trình ngay lập tức." >&2
     exit 1
 fi
-echo "XÁC NHẬN: Commit SHA hoàn toàn chính xác ($ACTUAL_COMMIT)."
+echo "XÁC NHẬN: Đã kéo từ origin và xác thực SHA thành công ($ACTUAL_COMMIT)."
 
 echo "[3/6] Thiết lập toolchain (JDK 17 Eclipse Adoptium & Maven 3.9.16)..."
 export JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17.0.20.8-hotspot"
@@ -67,6 +83,8 @@ mvn.cmd -v | tee -a "$RAW_LOG"
 
 BYTEBUDDY_AGENT="C:/Users/khoid/.m2/repository/net/bytebuddy/byte-buddy-agent/1.14.19/byte-buddy-agent-1.14.19.jar"
 echo "Sử dụng ByteBuddy Agent: $BYTEBUDDY_AGENT"
+
+echo "[4/6] Chạy toàn bộ Unit & Integration tests (mvn.cmd clean test)..."
 mvn.cmd clean test "-DargLine=-javaagent:$BYTEBUDDY_AGENT -Djava.io.tmpdir=C:/Users/khoid/AppData/Local/Temp" 2>&1 | tee -a "$RAW_LOG"
 
 echo "[5/6] Đối soát kết quả kiểm thử từ Surefire Reports..."
@@ -137,13 +155,10 @@ echo "$JAR_SHA256 *fnmf-backend-test-latest.jar" > "${LATEST_LINK}.sha256"
 
 JAR_SIZE=$(wc -c < "$DEST_JAR")
 
-echo "Mã hóa và lưu trữ log đã che thông tin nhạy cảm..."
-mask_secrets < "$RAW_LOG" > "$MASKED_LOG"
-rm -f "$RAW_LOG"
-
 echo "================================================================================"
 echo "    KẾT QUẢ BUILD BACKEND TEST THÀNH CÔNG                                       "
 echo "================================================================================"
+echo "Nguồn Git Remote: $GIT_REMOTE_SRC"
 echo "Commit Git      : $ACTUAL_COMMIT"
 echo "Số bài test đạt : $TOTAL_TESTS tests / $SUITE_COUNT suites (0 failures, 0 errors, $TOTAL_SKIPPED skipped)"
 echo "Tệp Artifact    : $DEST_JAR"
