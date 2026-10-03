@@ -56,6 +56,9 @@ echo "[3/6] Thiết lập toolchain (JDK 17 Eclipse Adoptium & Android SDK)..."
 export JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17.0.20.8-hotspot"
 export ANDROID_HOME="C:/Users/khoid/AppData/Local/Android/Sdk"
 export ANDROID_SDK_ROOT="C:/Users/khoid/AppData/Local/Android/Sdk"
+export TEMP="C:\Users\khoid\AppData\Local\Temp"
+export TMP="C:\Users\khoid\AppData\Local\Temp"
+export USERPROFILE="C:\Users\khoid"
 export PATH="/usr/bin:$JAVA_HOME/bin:$PATH"
 
 if [ ! -f "local.properties" ]; then

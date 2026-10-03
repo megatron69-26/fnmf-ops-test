@@ -58,12 +58,16 @@ echo "XÁC NHẬN: Commit SHA hoàn toàn chính xác ($ACTUAL_COMMIT)."
 echo "[3/6] Thiết lập toolchain (JDK 17 Eclipse Adoptium & Maven 3.9.16)..."
 export JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17.0.20.8-hotspot"
 export PATH="/usr/bin:/c/tools/apache-maven-3.9.16/bin:$PATH"
+export TEMP="C:\Users\khoid\AppData\Local\Temp"
+export TMP="C:\Users\khoid\AppData\Local\Temp"
+export USERPROFILE="C:\Users\khoid"
+export MAVEN_OPTS="-Djava.io.tmpdir=C:/Users/khoid/AppData/Local/Temp"
 
 mvn.cmd -v | tee -a "$RAW_LOG"
 
 BYTEBUDDY_AGENT="C:/Users/khoid/.m2/repository/net/bytebuddy/byte-buddy-agent/1.14.19/byte-buddy-agent-1.14.19.jar"
 echo "Sử dụng ByteBuddy Agent: $BYTEBUDDY_AGENT"
-mvn.cmd clean test "-DargLine=-javaagent:$BYTEBUDDY_AGENT" 2>&1 | tee -a "$RAW_LOG"
+mvn.cmd clean test "-DargLine=-javaagent:$BYTEBUDDY_AGENT -Djava.io.tmpdir=C:/Users/khoid/AppData/Local/Temp" 2>&1 | tee -a "$RAW_LOG"
 
 echo "[5/6] Đối soát kết quả kiểm thử từ Surefire Reports..."
 SUREFIRE_DIR="$WORKSPACE_DIR/target/surefire-reports"
