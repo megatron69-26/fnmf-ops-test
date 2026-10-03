@@ -61,8 +61,9 @@ export PATH="/usr/bin:/c/tools/apache-maven-3.9.16/bin:$PATH"
 
 mvn.cmd -v | tee -a "$RAW_LOG"
 
-echo "[4/6] Chạy toàn bộ Unit & Integration tests (mvn.cmd clean test)..."
-mvn.cmd clean test 2>&1 | tee -a "$RAW_LOG"
+BYTEBUDDY_AGENT="C:/Users/khoid/.m2/repository/net/bytebuddy/byte-buddy-agent/1.14.19/byte-buddy-agent-1.14.19.jar"
+echo "Sử dụng ByteBuddy Agent: $BYTEBUDDY_AGENT"
+mvn.cmd clean test "-DargLine=-javaagent:$BYTEBUDDY_AGENT" 2>&1 | tee -a "$RAW_LOG"
 
 echo "[5/6] Đối soát kết quả kiểm thử từ Surefire Reports..."
 SUREFIRE_DIR="$WORKSPACE_DIR/target/surefire-reports"
