@@ -214,7 +214,7 @@ else
     
     get_db_version() {
         local raw
-        if ! raw=$("$ADB" -s "$DEVICE_ID" shell "run-as com.termux /data/data/com.termux/files/usr/bin/psql -d fnmf_test -U fnmf_test_user -v ON_ERROR_STOP=1 -t -A -c 'SELECT coalesce(max(version), '\''0'\'') FROM flyway_schema_history WHERE success = true;'" 2>/dev/null); then
+        if ! raw=$("$ADB" -s "$DEVICE_ID" shell "run-as com.termux /data/data/com.termux/files/usr/bin/psql -d fnmf_test -U fnmf_test_user -v ON_ERROR_STOP=1 -t -A -c 'SELECT coalesce(version, '\''0'\'') FROM flyway_schema_history WHERE success = true ORDER BY installed_rank DESC LIMIT 1;'" 2>/dev/null); then
             echo "LỖI KẾT NỐI CSDL: Lệnh psql kiểm tra Flyway thất bại!" >&2
             return 1
         fi
