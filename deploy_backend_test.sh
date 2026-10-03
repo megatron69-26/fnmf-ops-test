@@ -8,6 +8,7 @@ echo "Date: $(date)"
 echo ""
 
 export ANDROID_USER_HOME="C:/Users/khoid/.android"
+export MSYS2_ARG_CONV_EXCL="/data/"
 export PATH="/c/Users/khoid/AppData/Local/Android/Sdk/platform-tools:$PATH"
 
 ADB="adb.exe"
