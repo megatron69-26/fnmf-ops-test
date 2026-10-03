@@ -491,7 +491,8 @@ if ! remote_file_exists "$PHONE_JAR"; then
 fi
 
 ORIG_JAR_SIZE=$(remote_get_size "$PHONE_JAR")
-echo "Kích thước tệp JAR gốc: $ORIG_JAR_SIZE bytes"
+ORIG_JAR_SHA=$(remote_sha256 "$PHONE_JAR")
+echo "Tệp JAR gốc đang chạy: $ORIG_JAR_SIZE bytes, SHA-256: $ORIG_JAR_SHA"
 
 # Thực hiện sao chép snapshot (KHÔNG DÙNG || true)
 if ! remote_copy "$PHONE_JAR" "$ROLLBACK_JAR"; then
@@ -506,11 +507,24 @@ if ! remote_file_exists "$ROLLBACK_JAR"; then
 fi
 
 ROLLBACK_SIZE=$(remote_get_size "$ROLLBACK_JAR")
+ROLLBACK_SHA=$(remote_sha256 "$ROLLBACK_JAR")
+
 if [ "$ROLLBACK_SIZE" -ne "$ORIG_JAR_SIZE" ] || [ "$ROLLBACK_SIZE" -le 0 ]; then
     echo "LỖI: Kích thước bản snapshot ($ROLLBACK_SIZE bytes) không khớp tệp gốc ($ORIG_JAR_SIZE bytes)!" >&2
     exit 1
 fi
-echo "OK: Đã xác thực bản snapshot rollback toàn vẹn ($ROLLBACK_JAR, $ROLLBACK_SIZE bytes)."
+
+if [ -z "$ORIG_JAR_SHA" ] || [ -z "$ROLLBACK_SHA" ] || [ "$ORIG_JAR_SHA" != "$ROLLBACK_SHA" ]; then
+    echo "LỖI AN TOÀN SNAPSHOT: Mã băm SHA-256 của bản snapshot rollback không khớp JAR đang chạy!" >&2
+    echo "  JAR gốc : $ORIG_JAR_SHA" >&2
+    echo "  Snapshot: $ROLLBACK_SHA" >&2
+    echo "Hủy bỏ triển khai trước khi thay tệp để đảm bảo khả năng hoàn nguyên 100%!" >&2
+    exit 1
+fi
+
+echo "OK: Đã tạo và xác thực bản snapshot rollback mới từ chính JAR đang chạy:"
+echo "    -> Kích thước: $ROLLBACK_SIZE bytes"
+echo "    -> SHA-256   : $ROLLBACK_SHA (Khớp tuyệt đối 100%)"
 
 # ==============================================================================
 # CHẶNG 5: ATOMIC DEPLOY BUFFERING (ĐẨY JAR MỚI VÀO STAGING & ĐỐI SOÁT)
