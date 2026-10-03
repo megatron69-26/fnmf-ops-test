@@ -236,7 +236,7 @@ else
     remote_get_size() {
         local path="$1"
         local sz
-        sz=$("$ADB" -s "$DEVICE_ID" shell "run-as com.termux wc -c < '$path' 2>/dev/null" | tr -d '\r\n ')
+        sz=$("$ADB" -s "$DEVICE_ID" shell "run-as com.termux stat -c %s '$path' 2>/dev/null" | tr -d '\r\n ')
         echo "${sz:-0}"
     }
 
