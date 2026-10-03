@@ -10,7 +10,19 @@ echo ""
 ADB="adb.exe"
 DEVICE_ID="R3CM8105TPA"
 ARTIFACT_DIR="/c/Users/khoid/Projects/artifacts/backend"
-TARGET_JAR="${TARGET_JAR:-${ARTIFACT_DIR}/fnmf-backend-test-latest.jar}"
+TARGET_JAR="${TARGET_JAR:-}"
+
+# Xử lý chỉ định artifact bất biến thay vì latest.jar
+if [ -z "$TARGET_JAR" ] || [[ "$TARGET_JAR" == *"latest.jar"* ]]; then
+    LATEST_IMMUTABLE=$(ls -t "${ARTIFACT_DIR}"/fnmf-backend-test-[0-9a-fA-F]*_*.jar 2>/dev/null | head -n 1 || true)
+    if [ -n "$LATEST_IMMUTABLE" ] && [ -f "$LATEST_IMMUTABLE" ]; then
+        TARGET_JAR="$LATEST_IMMUTABLE"
+        echo "[CHỈ ĐỊNH ARTIFACT] Sử dụng tệp artifact bất biến: $TARGET_JAR"
+    else
+        TARGET_JAR="${ARTIFACT_DIR}/fnmf-backend-test-latest.jar"
+    fi
+fi
+
 BACKUP_SCRIPT="/c/Users/khoid/Projects/fnmf-ops-test/backup_db.sh"
 RESTART_SCRIPT="/c/Users/khoid/Projects/fnmf-ops-test/restart_backend.sh"
 HEALTH_CHECK_SCRIPT="/c/Users/khoid/Projects/fnmf-ops-test/health_check.sh"
@@ -73,6 +85,7 @@ fi
 MUTATED="false"
 DEPLOY_SUCCESS="false"
 ROLLBACK_IN_PROGRESS="false"
+ROLLBACK_EXECUTED="false"
 
 # ==============================================================================
 # LỚP TRỪU TƯỢNG HÓA THAO TÁC HỆ THỐNG (DEVICE ABSTRACTION LAYER)
@@ -353,6 +366,11 @@ check_migration_safety() {
 # HÀM THỰC THI ROLLBACK TỰ ĐỘNG
 # ==============================================================================
 perform_rollback() {
+    if [ "$ROLLBACK_EXECUTED" = "true" ]; then
+        echo "[ROLLBACK BẢO LƯU] Quy trình rollback đã được thực hiện xong, không chạy lặp lại." >&2
+        return 0
+    fi
+    ROLLBACK_EXECUTED="true"
     ROLLBACK_IN_PROGRESS="true"
     echo "" >&2
     echo "================================================================================" >&2
@@ -389,7 +407,7 @@ perform_rollback() {
 
 on_exit() {
     local code=$?
-    if [ "$MUTATED" = "true" ] && [ "$DEPLOY_SUCCESS" != "true" ]; then
+    if [ "$MUTATED" = "true" ] && [ "$DEPLOY_SUCCESS" != "true" ] && [ "$ROLLBACK_EXECUTED" != "true" ]; then
         echo "" >&2
         echo "================================================================================" >&2
         echo "  [BẢO VỆ PHÒNG THỦ] SCRIPT BỊ NGẮT SAU KHI HOÁN ĐỔI JAR (EXIT CODE: $code)!   " >&2
@@ -403,6 +421,11 @@ trap on_exit EXIT
 # CHẶNG 1: PRE-FLIGHT CHECK (THIẾT BỊ & CHECKSUM ARTIFACT)
 # ==============================================================================
 echo "[1/7] Kiểm tra kết nối thiết bị và toàn vẹn SHA-256 của Artifact..."
+if [ "$ACTIVATE_DEPLOY" = "true" ] && [[ "$TARGET_JAR" == *"latest.jar"* ]]; then
+    echo "LỖI AN TOÀN: Triển khai thực tế yêu cầu artifact phải được chỉ định bằng tên bất biến (immutable), không dùng latest.jar!" >&2
+    exit 1
+fi
+
 if ! device_check; then
     echo "LỖI: Thiết bị $DEVICE_ID không phản hồi qua ADB!" >&2
     exit 1

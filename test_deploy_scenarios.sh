@@ -240,11 +240,18 @@ set -e
 
 if [ $SCEN6_EXIT -ne 0 ]; then
     CURRENT_CONTENT=$(cat "$SIM6/llm-gateway-1.1.17.jar")
+    ROLLBACK_COUNT6=$(grep -c "\[QUY TRÌNH ROLLBACK KHẨN CẤP ĐƯỢC KÍCH HOẠT\]" "$SIM6/deploy.log" || true)
+    if [ "$ROLLBACK_COUNT6" -ne 1 ]; then
+        echo "FAIL KỊCH BẢN 6: Số lần kích hoạt rollback ($ROLLBACK_COUNT6) không khớp yêu cầu (phải đúng 1 lần)!"
+        cat "$SIM6/deploy.log"
+        exit 1
+    fi
     if grep -q "Lệnh hoán đổi tệp staging sang tệp chính thất bại hoặc bị ngắt! Kích hoạt Rollback" "$SIM6/deploy.log" && \
        grep -q "ROLLBACK THÀNH CÔNG" "$SIM6/deploy.log" && \
        [ "$CURRENT_CONTENT" = "ORIGINAL_BACKEND_JAR_v1.0" ]; then
         echo "PASS KỊCH BẢN 6: MUTATED=true trước swap đã kích hoạt Rollback khi lệnh swap lỗi."
         echo "  - Exit code: $SCEN6_EXIT"
+        echo "  - Số lần kích hoạt rollback: $ROLLBACK_COUNT6 (chính xác duy nhất 1 lần)."
         echo "  - Tệp chính được khôi phục nguyên vẹn từ bản snapshot $SIM6/llm-gateway-rollback.jar."
         echo "  - Nội dung JAR phục hồi chính xác bản gốc v1.0."
         PASSED_SCENARIOS=$((PASSED_SCENARIOS + 1))
@@ -279,11 +286,18 @@ set -e
 
 if [ $SCEN7_EXIT -ne 0 ]; then
     CURRENT_CONTENT=$(cat "$SIM7/llm-gateway-1.1.17.jar")
+    ROLLBACK_COUNT7=$(grep -c "\[QUY TRÌNH ROLLBACK KHẨN CẤP ĐƯỢC KÍCH HOẠT\]" "$SIM7/deploy.log" || true)
+    if [ "$ROLLBACK_COUNT7" -ne 1 ]; then
+        echo "FAIL KỊCH BẢN 7: Số lần kích hoạt rollback ($ROLLBACK_COUNT7) không khớp yêu cầu (phải đúng 1 lần)!"
+        cat "$SIM7/deploy.log"
+        exit 1
+    fi
     if grep -q "QUY TRÌNH ROLLBACK KHẨN CẤP ĐƯỢC KÍCH HOẠT" "$SIM7/deploy.log" && \
        grep -q "ROLLBACK THÀNH CÔNG" "$SIM7/deploy.log" && \
        [ "$CURRENT_CONTENT" = "ORIGINAL_BACKEND_JAR_v1.0" ]; then
         echo "PASS KỊCH BẢN 7: Rollback tự động kích hoạt ngay khi restart thất bại."
         echo "  - Script không bị set -e ngắt giữa chừng."
+        echo "  - Số lần kích hoạt rollback: $ROLLBACK_COUNT7 (chính xác duy nhất 1 lần)."
         echo "  - Nội dung tệp JAR chính đã được hoàn nguyên về bản gốc v1.0."
         PASSED_SCENARIOS=$((PASSED_SCENARIOS + 1))
     else
@@ -317,11 +331,18 @@ set -e
 
 if [ $SCEN8_EXIT -ne 0 ]; then
     CURRENT_CONTENT=$(cat "$SIM8/llm-gateway-1.1.17.jar")
+    ROLLBACK_COUNT8=$(grep -c "\[QUY TRÌNH ROLLBACK KHẨN CẤP ĐƯỢC KÍCH HOẠT\]" "$SIM8/deploy.log" || true)
+    if [ "$ROLLBACK_COUNT8" -ne 1 ]; then
+        echo "FAIL KỊCH BẢN 8: Số lần kích hoạt rollback ($ROLLBACK_COUNT8) không khớp yêu cầu (phải đúng 1 lần)!"
+        cat "$SIM8/deploy.log"
+        exit 1
+    fi
     if grep -q "Dịch vụ không vượt qua kiểm tra sức khỏe! Bắt đầu Rollback" "$SIM8/deploy.log" && \
        grep -q "ROLLBACK THÀNH CÔNG" "$SIM8/deploy.log" && \
        [ "$CURRENT_CONTENT" = "ORIGINAL_BACKEND_JAR_v1.0" ]; then
         echo "PASS KỊCH BẢN 8: Rollback tự động kích hoạt khi health check trả về lỗi."
         echo "  - Bản snapshot phục hồi chính xác."
+        echo "  - Số lần kích hoạt rollback: $ROLLBACK_COUNT8 (chính xác duy nhất 1 lần)."
         echo "  - Dịch vụ sau rollback được khởi động lại và kiểm chứng sức khỏe UP."
         echo "  - Nội dung JAR chính hoàn nguyên về bản gốc v1.0."
         PASSED_SCENARIOS=$((PASSED_SCENARIOS + 1))
