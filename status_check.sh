@@ -5,6 +5,11 @@ echo "   FNMF NOTE 10+ SYSTEM & SERVICES STATUS (READ-ONLY)    "
 echo "=========================================================="
 echo "Date: $(date)"
 
+export ANDROID_USER_HOME="C:/Users/khoid/.android"
+export USERPROFILE="C:/Users/khoid"
+export HOME="C:/Users/khoid"
+export PATH="/c/Users/khoid/AppData/Local/Android/Sdk/platform-tools:$PATH"
+
 ADB="adb.exe"
 
 echo ""
