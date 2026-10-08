@@ -6,7 +6,7 @@ echo "    FNMF BACKEND TEST BUILD & TEST PIPELINE (GIT ORIGIN AUTOMATION)       
 echo "================================================================================"
 echo "Thời gian bắt đầu: $(date)"
 
-EXPECTED_COMMIT="20c79b75a2b3decebbfea8d8a71e5fc00c072d9e"
+EXPECTED_COMMIT="${EXPECTED_COMMIT:-6a146815871f83ff6704c99e04462384f17c16a5}"
 WORKSPACE_DIR="/c/Users/khoid/Projects/build-workspaces/backend-test"
 ARTIFACT_DIR="/c/Users/khoid/Projects/artifacts/backend"
 GIT_REMOTE_SRC="https://github.com/megatron69-26/fnmf-backend-test.git"
@@ -142,7 +142,8 @@ if [ ! -f "$SOURCE_JAR" ]; then
 fi
 
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-TARGET_JAR_NAME="fnmf-backend-test-20c79b7_${TIMESTAMP}.jar"
+SHORT_COMMIT=$(echo "$ACTUAL_COMMIT" | cut -c1-7)
+TARGET_JAR_NAME="fnmf-backend-test-${SHORT_COMMIT}_${TIMESTAMP}.jar"
 DEST_JAR="$ARTIFACT_DIR/$TARGET_JAR_NAME"
 LATEST_LINK="$ARTIFACT_DIR/fnmf-backend-test-latest.jar"
 

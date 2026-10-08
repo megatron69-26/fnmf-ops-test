@@ -1,0 +1,20 @@
+# Logs and temporary files
+*.log
+*.pid
+*.tmp
+
+# Sensitive environment and database dumps
+*.sql
+*.env*
+!*.env*.example
+
+# Build binaries and models
+*.apk
+*.jar
+*.gguf
+node_modules/
+dist/
+
+# System files
+.DS_Store
+Thumbs.db

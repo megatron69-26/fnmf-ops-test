@@ -6,7 +6,7 @@ echo "    FNMF ANDROID APP TEST BUILD & TEST PIPELINE (GIT-BASED AUTOMATION)    
 echo "================================================================================"
 echo "Thời gian bắt đầu: $(date)"
 
-EXPECTED_COMMIT="ebf2fdd55d3e57f3c5428585c1e23821d10a30e0"
+EXPECTED_COMMIT="${EXPECTED_COMMIT:-89330f0740722dbdc6a19b56ebae4fcb75010a82}"
 WORKSPACE_DIR="/c/Users/khoid/Projects/build-workspaces/app-test"
 ARTIFACT_DIR="/c/Users/khoid/Projects/artifacts/app"
 GIT_REMOTE_SRC="https://github.com/megatron69-26/fnmf-app-test.git"
@@ -54,8 +54,8 @@ fi
 cd "$WORKSPACE_DIR"
 git remote set-url origin "$GIT_REMOTE_SRC" 2>/dev/null || true
 
-echo "[2/6] Kéo bản mới trực tiếp từ GitHub Remote (git fetch origin main)..."
-git fetch origin main
+echo "[2/6] Kéo bản mới trực tiếp từ GitHub Remote (git fetch origin)..."
+git fetch origin
 git checkout "$EXPECTED_COMMIT"
 
 ACTUAL_COMMIT=$(git rev-parse HEAD)
@@ -139,7 +139,7 @@ if [ ! -f "$SOURCE_APK" ]; then
 fi
 
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-TARGET_APK_NAME="fnmf-app-debug-ebf2fdd_${TIMESTAMP}.apk"
+TARGET_APK_NAME="fnmf-app-test-debug-89330f0_${TIMESTAMP}.apk"
 DEST_APK="$ARTIFACT_DIR/$TARGET_APK_NAME"
 LATEST_LINK="$ARTIFACT_DIR/fnmf-app-debug-latest.apk"
 
