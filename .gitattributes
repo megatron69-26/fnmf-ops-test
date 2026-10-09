@@ -1,3 +1,4 @@
 start_public_api_gateway.sh text eol=lf
 start_public_quick_tunnel.sh text eol=lf
 stop_public_quick_tunnel.sh text eol=lf
+start_qwen35.sh text eol=lf
