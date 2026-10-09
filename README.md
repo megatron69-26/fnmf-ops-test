@@ -60,3 +60,13 @@ Tunnel (Cloudflare Quick Tunnel hoặc ngrok) **chỉ được phép trỏ tới
 3. Trong mục cấu hình Server của app Android:
    * Nếu cùng mạng nội bộ: Nhập địa chỉ IP Gateway nội bộ (ví dụ: `http://192.168.x.x:8084`).
    * Nếu qua Internet: Nhập URL HTTPS do Tunnel cung cấp (ví dụ: `https://<tunnel-id>.trycloudflare.com`).
+
+---
+
+## 5. Trạng thái Thử nghiệm Qwen3.5-4B trên Note 10+
+
+* Đã bổ sung script `start_qwen35.sh` kiểm tra mã băm SHA-256 đối chiếu model 4B và cơ chế rollback tự động về Qwen2.5-1.5B nếu khởi động thất bại.
+* **Kết quả kiểm thử thực tế:** Mô hình `Qwen3.5-4B-Q4_K_M.gguf` đã chạy thử nghiệm với `llama-server` trên thiết bị Note 10+ (Exynos 9825).
+* **Hạn chế còn lại & Lưu ý vận hành:**
+  * Lượt suy luận Forecast trên mô hình 4B vẫn gặp tình trạng timeout do thời gian xử lý kéo dài; chưa được nghiệm thu để chạy thường trực thay thế hoàn toàn 1.5B.
+  * Khi thiết bị ấm/nóng liên tục, cơ chế điều tiết nhiệt phần cứng (thermal throttling) của CPU làm suy giảm tốc độ sinh token. Dự án **chưa giải quyết hiện tượng thermal throttling** này trên phần cứng di động và khuyến nghị giữ bản sao lưu rollback 1.5B khi cần độ ổn định cao.
