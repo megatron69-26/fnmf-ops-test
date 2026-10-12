@@ -11,7 +11,7 @@ const routes = [
   ['POST', /^\/api\/news\/refresh$/],
   ['GET', /^\/api\/trade\/(?:portfolio|history)$/],
   ['POST', /^\/api\/trade\/order$/],
-  ['GET', /^\/api\/forecast\/(?:market|[A-Za-z0-9_-]+)$/],
+  ['GET', /^\/api\/forecast\/market$/],
   ['POST', /^\/api\/forecast\/(?:refresh|market\/refresh)$/],
   ['GET', /^\/api\/refresh-quota\/status$/],
   ['GET', /^\/api\/watchlist$/],

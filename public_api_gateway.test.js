@@ -7,6 +7,8 @@ test('allow only routes used by the Android test app', () => {
   assert.equal(allowed('POST', '/api/auth/login'), true);
   assert.equal(allowed('POST', '/api/auth/register'), false);
   assert.equal(allowed('GET', '/api/mobile/news/sync?since=1'), true);
+  assert.equal(allowed('GET', '/api/forecast/market'), true);
+  assert.equal(allowed('GET', '/api/forecast/BTCUSDT'), false);
   assert.equal(allowed('POST', '/api/payments/123/cancel'), true);
   for (const path of ['/api/admin/db/overview', '/swagger-ui/index.html', '/v3/api-docs',
     '/h2-console', '/api/news/diagnostics', '/api/admin/../stocks', '/api/%61dmin/db/overview']) {
