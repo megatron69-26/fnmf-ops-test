@@ -44,18 +44,18 @@ function jsonError(res, status, message) {
   res.end(JSON.stringify({ error: message }));
 }
 
-function createGateway({ upstreamPort = 8083, port = 8084 } = {}) {
+function createGateway({ upstreamPort = 8083, port = 8084, registrationEnabled = process.env.FNMF_PUBLIC_REGISTRATION === 'true' } = {}) {
   const counters = new Map();
   let active = 0;
-  function underLimit(key, max) {
+  function underLimit(key, max, windowMs = 60000) {
     const now = Date.now();
-    const windowStart = Math.floor(now / 60000);
+    const windowStart = Math.floor(now / windowMs);
     const current = counters.get(key);
     if (!current || current.windowStart !== windowStart) {
-      counters.set(key, { windowStart, count: 1 });
+      counters.set(key, { windowStart, count: 1, windowMs });
       if (counters.size > 500) {
         for (const [entryKey, value] of counters) {
-          if (value.windowStart !== windowStart) counters.delete(entryKey);
+          if (value.windowStart !== Math.floor(now / value.windowMs)) counters.delete(entryKey);
         }
       }
       return true;
@@ -65,12 +65,15 @@ function createGateway({ upstreamPort = 8083, port = 8084 } = {}) {
   }
 
   const server = http.createServer(async (req, res) => {
-    // New accounts must be provisioned explicitly for this small private test cohort.
-    if (req.url?.split('?')[0] === '/api/auth/register' && process.env.FNMF_PUBLIC_REGISTRATION !== 'true') {
+    const registrationRoute = req.method === 'POST' && req.url?.split('?')[0] === '/api/auth/register';
+    if (req.url?.split('?')[0] === '/api/auth/register' && !registrationEnabled) {
       return jsonError(res, 404, 'Not found');
     }
-    if (req.method === 'POST' && req.url?.split('?')[0] === '/api/auth/register' && process.env.FNMF_PUBLIC_REGISTRATION === 'true') {
-      // Reuse the same bounded auth path below, without opening any other route.
+    if (registrationRoute && registrationEnabled) {
+      // This endpoint is public, but bounded independently of login attempts.
+      if (!underLimit('register:hour', 10, 3600000) || !underLimit('register:day', 30, 86400000)) {
+        return jsonError(res, 429, 'Registration limit reached');
+      }
     } else if (!allowed(req.method, req.url)) return jsonError(res, 404, 'Not found');
     // Do not use X-Forwarded-For: a tunnel makes all origins appear local,
     // while trusting client-provided values would enable spoofing.

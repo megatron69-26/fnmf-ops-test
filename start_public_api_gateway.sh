@@ -19,7 +19,7 @@ if [ -f "$PID_FILE" ]; then
     fi
 fi
 
-nohup "$NODE" "$GATEWAY" > "$LOG_FILE" 2>&1 < /dev/null &
+FNMF_PUBLIC_REGISTRATION=true nohup "$NODE" "$GATEWAY" > "$LOG_FILE" 2>&1 < /dev/null &
 gateway_pid=$!
 echo "$gateway_pid" > "$PID_FILE"
 sleep 1

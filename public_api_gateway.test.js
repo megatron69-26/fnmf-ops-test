@@ -42,3 +42,31 @@ test('gateway denies internals and strips spoofed forwarding headers', async () 
     await new Promise(resolve => backend.close(resolve));
   }
 });
+
+test('registration is opt-in and bounded without opening admin routes', async () => {
+  const backend = http.createServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ path: req.url }));
+  });
+  await new Promise(resolve => backend.listen(0, '127.0.0.1', resolve));
+  const disabled = createGateway({ upstreamPort: backend.address().port, registrationEnabled: false });
+  const enabled = createGateway({ upstreamPort: backend.address().port, registrationEnabled: true });
+  await Promise.all([disabled, enabled].map(({ server }) =>
+    new Promise(resolve => server.listen(0, '127.0.0.1', resolve))));
+  const request = (gateway) => fetch(`http://127.0.0.1:${gateway.server.address().port}/api/auth/register`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'new@example.com', password: 'test-password' }),
+  });
+  try {
+    assert.equal((await request(disabled)).status, 404);
+    for (let attempt = 0; attempt < 10; attempt++) {
+      assert.equal((await request(enabled)).status, 200);
+    }
+    assert.equal((await request(enabled)).status, 429);
+    assert.equal((await fetch(`http://127.0.0.1:${enabled.server.address().port}/api/admin/users`)).status, 404);
+  } finally {
+    await Promise.all([disabled, enabled].map(({ server }) =>
+      new Promise(resolve => server.close(resolve))));
+    await new Promise(resolve => backend.close(resolve));
+  }
+});
