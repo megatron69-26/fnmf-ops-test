@@ -1,5 +1,9 @@
 # FNMF Ops Test — Vận hành & Cổng kết nối thử nghiệm
 
+> Chế độ hiện hành dùng `llama-cli` theo lịch, không mở cổng HTTP cho Qwen.
+> `start_qwen35.sh` và `rebind_llama_server.sh` là script cũ; mặc định từ chối chạy.
+> Chỉ dùng biến `FNMF_ALLOW_LEGACY_LLAMA_HTTP=true` trong tình huống rollback có kiểm soát.
+
 Repository này chứa các script tự động hóa, kiểm thử vận hành và lớp gateway bảo mật dành riêng cho môi trường thử nghiệm phân tán FNMF (chạy trên Samsung Galaxy Note 10+ và máy trạm).
 
 ---

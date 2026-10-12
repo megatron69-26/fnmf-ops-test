@@ -1,6 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
+if [ "${FNMF_ALLOW_LEGACY_LLAMA_HTTP:-false}" != "true" ]; then
+    echo 'Disabled: scheduled Qwen CLI mode must not expose llama-server HTTP port 8080.' >&2
+    exit 1
+fi
+
 export PATH="/c/Users/khoid/AppData/Local/Android/Sdk/platform-tools:$PATH"
 export ANDROID_USER_HOME="C:/Users/khoid/.android"
 ADB="adb.exe"

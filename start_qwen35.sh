@@ -1,6 +1,11 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
+if [ "${FNMF_ALLOW_LEGACY_LLAMA_HTTP:-false}" != "true" ]; then
+    echo 'Disabled: scheduled Qwen CLI mode must not expose llama-server HTTP port 8080.' >&2
+    exit 1
+fi
+
 APP_HOME=/data/data/com.termux/files/home
 LLAMA=/data/data/com.termux/files/usr/bin/llama-server
 CURL=/data/data/com.termux/files/usr/bin/curl
